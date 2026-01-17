@@ -367,11 +367,24 @@ public class ScoreCalculator : MonoBehaviour
     /// </summary>
     public void DeselectSingleGeneral(GeneralItem generalItem)
     {
-        // 找到该Item对应的GeneralData
-        GeneralData targetData = selectedGenerals.FirstOrDefault(d => d.generalName == generalItem.generalName);
+        if (generalItem == null)
+        {
+            Debug.LogWarning("⚠️ 传入的GeneralItem为空，无需取消");
+            return;
+        }
+
+        // 核心修改：先按名称找，再按Item找（兼容交换后的名称变更）
+        GeneralData targetData = selectedGenerals.FirstOrDefault(d =>
+            d != null && d.generalName == generalItem.generalName
+        );
+
+        // 容错：找不到数据时，直接清空该Item的选中状态，不报错
         if (targetData == null || !selectedGeneralItems.Contains(generalItem))
         {
-            Debug.LogWarning($"⚠️ 未找到[{generalItem.generalName}]的选中记录，无需取消");
+            // 兜底：强制取消UI选中状态（避免卡片卡住选中样式）
+            generalItem.isSelected = false;
+            generalItem.UpdateCardScale();
+            Debug.LogWarning($"⚠️ 未找到[{generalItem.generalName}]的选中记录，已强制取消UI选中状态");
             return;
         }
 
@@ -393,6 +406,54 @@ public class ScoreCalculator : MonoBehaviour
         UpdateScoreUI(matchedRuleDesc);
 
         Debug.Log($"❌ 取消选中[{generalItem.generalName}] | 基础分：{currentBaseScore} | 倍率：{currentMagnification} | 最终分：{currentFinalScore}");
+    }
+
+    public void ClearGeneralSelectRecord(string generalName)
+    {
+        if (string.IsNullOrEmpty(generalName)) return;
+
+        // 移除该名称对应的所有数据和Item
+        var targetDatas = selectedGenerals.Where(d => d != null && d.generalName == generalName).ToList();
+        var targetItems = selectedGeneralItems.Where(item => item != null && item.generalName == generalName).ToList();
+
+        foreach (var data in targetDatas)
+        {
+            selectedGenerals.Remove(data);
+        }
+        foreach (var item in targetItems)
+        {
+            selectedGeneralItems.Remove(item);
+            // 强制取消UI选中状态
+            item.isSelected = false;
+            item.UpdateCardScale();
+        }
+
+        if (targetDatas.Count > 0)
+        {
+            Debug.Log($"✅ 清空[{generalName}]的选中记录，共移除{targetDatas.Count}条");
+            // 重新计算分数
+            currentBaseScore = selectedGenerals.Sum(d => (float)d.baseScore);
+            string matchedRuleDesc = "";
+            currentMagnification = CalculateMagnificationByRules(out matchedRuleDesc);
+            currentFinalScore = currentBaseScore * currentMagnification;
+            UpdateScoreUI(matchedRuleDesc);
+        }
+    }
+
+    public void ResetAllSelectState()
+    {
+        // 强制取消所有Item的选中状态
+        foreach (var item in selectedGeneralItems)
+        {
+            if (item != null)
+            {
+                item.isSelected = false;
+                item.UpdateCardScale();
+            }
+        }
+        selectedGenerals.Clear();
+        selectedGeneralItems.Clear();
+        ResetScore();
     }
 
     /// <summary>

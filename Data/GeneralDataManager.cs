@@ -93,6 +93,7 @@ public class GeneralDataManager : MonoBehaviour
     }
 
     // 通过武将名查找数据（修复后）
+    // 通过武将名查找数据（严格匹配版）
     public GeneralData GetGeneralData(string generalName)
     {
         if (string.IsNullOrEmpty(generalName))
@@ -101,17 +102,23 @@ public class GeneralDataManager : MonoBehaviour
             return null;
         }
 
-        // 遍历匹配（忽略大小写，提升容错）
+        // 严格匹配（去掉IgnoreCase，避免「荀彧」和「荀或」等错误匹配）
         foreach (var data in allGeneralData)
         {
-            // 现在StringComparison能被识别，因为顶部加了using System;
-            if (data.generalName.Equals(generalName, StringComparison.OrdinalIgnoreCase))
+            if (data == null) continue; // 跳过空数据
+            if (data.generalName == generalName)
             {
                 return data;
             }
         }
 
+        // 打印更详细的错误日志（方便排查）
         Debug.LogError($"❌ 未找到[{generalName}]对应的武将数据！");
+        Debug.Log($"❌ 数据列表中所有名称：");
+        foreach (var data in allGeneralData)
+        {
+            if (data != null) Debug.Log($"   - {data.generalName}");
+        }
         return null;
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -37,6 +38,38 @@ public class GeneralItem : MonoBehaviour
     public bool isSelected = false;
     // 原始按钮颜色（保留，可选用于按钮高亮）
     private Color originalColor;
+    // 新增：防重复绑定标记
+    private bool isEventBinded = false;
+
+    private void Awake()
+    {
+        // 只在Awake绑定一次点击事件，永不重复
+        BindClickEventOnce();
+    }
+
+    // 新增：单次绑定点击事件的方法
+    private void BindClickEventOnce()
+    {
+        if (isEventBinded) return; // 已绑定过，直接返回
+
+        // 自动查找Button（避免手动绑定出错）
+        if (selectButton == null)
+        {
+            selectButton = GetComponentInChildren<Button>();
+        }
+
+        if (selectButton != null)
+        {
+            selectButton.onClick.RemoveAllListeners(); // 清空所有旧事件
+            selectButton.onClick.AddListener(OnSelectButtonClick);
+            isEventBinded = true; // 标记为已绑定
+            Debug.Log($"✅ [{generalName}] 点击事件绑定完成（仅绑定一次）");
+        }
+        else
+        {
+            Debug.LogError($"❌ [{generalName}] 未找到Button组件！");
+        }
+    }
 
     // 订阅反选事件
     private void OnEnable()
@@ -96,8 +129,9 @@ public class GeneralItem : MonoBehaviour
         originalModelScale = new Vector3(150, 150, 150);
         Debug.Log($"✅ 记录[{generalName}]模型实例原始缩放：{originalModelScale}", this);
 
-        // 6. 绑定按钮点击事件
-        selectButton.onClick.AddListener(OnSelectButtonClick);
+        // 强制重置状态
+        isSelected = false;
+        UpdateCardScale();
 
         // 可选：modelRoot检查
         if (modelRoot == null)
@@ -169,39 +203,85 @@ public class GeneralItem : MonoBehaviour
         }
     }
 
+
+    private bool isClicking = false;
     /// <summary>
     /// 按钮点击事件（核心修改：只取消当前英雄选中）
     /// </summary>
-    private void OnSelectButtonClick()
+    public void OnSelectButtonClick()
     {
-        // 先切换选中状态
-        isSelected = !isSelected;
+        // 核心防抖：同一时间只执行一次
+        if (isClicking) return;
+        isClicking = true;
 
-        // 立即更新当前卡片的缩放/样式（只影响自己）
-        UpdateCardScale();
-
-        if (isSelected)
+        // 5. 调用分数计算（加try-catch+日志）
+        try
         {
-            // 选中逻辑：通知ScoreCalculator选中当前英雄（传递自身引用）
-            GeneralData generalData = GeneralDataManager.Instance?.GetGeneralData(generalName);
-            if (generalData != null)
+            // 1. 先打印调试日志（关键！看名称是否匹配）
+            Debug.Log($"🔍 尝试选中：当前卡片名称=[{generalName}]");
+            Debug.Log($"🔍 数据列表总数量=[{GeneralDataManager.Instance.allGeneralData.Count}]");
+            // 打印前10个数据名称（方便排查）
+            string first10Names = "";
+            for (int i = 0; i < Mathf.Min(10, GeneralDataManager.Instance.allGeneralData.Count); i++)
             {
-                ScoreCalculator.Instance.CalculateScore(generalData, this);
-                Debug.Log($"✅ 选中[{generalName}]，基础分：{generalData.baseScore}", this);
+                first10Names += GeneralDataManager.Instance.allGeneralData[i].generalName + "、";
+            }
+            Debug.Log($"🔍 数据列表前10个名称：{first10Names}");
+
+            // 2. 核心校验
+            if (ScoreCalculator.Instance == null)
+            {
+                Debug.LogWarning("⚠️ ScoreCalculator 实例为空！");
+                return;
+            }
+            if (GeneralDataManager.Instance == null)
+            {
+                Debug.LogWarning("⚠️ GeneralDataManager 实例为空！");
+                return;
+            }
+
+            // 3. 精准查找数据（去掉大小写容错，严格匹配，避免问题）
+            GeneralData currentData = GeneralDataManager.Instance.GetGeneralData(generalName);
+            if (currentData == null)
+            {
+                Debug.LogError($"❌ 数据列表中无[{generalName}]，无法选中！");
+                return;
+            }
+            Debug.Log($"✅ 找到[{generalName}]的武将数据：阵营={currentData.camp}，基础分={currentData.baseScore}");
+
+            // 4. 切换状态
+            isSelected = !isSelected;
+            UpdateCardScale();
+
+            if (isSelected)
+            {
+                Debug.Log($"📝 执行选中逻辑：[{generalName}]");
+                ScoreCalculator.Instance.CalculateScore(currentData, this);
             }
             else
             {
-                Debug.LogError($"❌ 未找到[{generalName}]的武将数据！", this);
-                isSelected = false;
-                UpdateCardScale(); // 恢复缩放
+                Debug.Log($"📝 执行取消选中逻辑：[{generalName}]");
+                ScoreCalculator.Instance.DeselectSingleGeneral(this);
             }
         }
-        else
+        catch (Exception e)
         {
-            // 反选逻辑：只取消当前英雄，不重置所有
-            ScoreCalculator.Instance.DeselectSingleGeneral(this);
-            Debug.Log($"✅ 取消选中[{generalName}]（仅当前英雄）", this);
+            Debug.LogError($"❌ 选中/取消选中出错：{e.Message}\n{e.StackTrace}");
+            isSelected = false;
+            UpdateCardScale();
         }
+        finally
+        {
+            // 延迟0.1秒重置防抖标记（避免快速点击）
+            Invoke(nameof(ResetClickFlag), 0.1f);
+        }
+    }
+
+
+    // 新增：重置防抖标记
+    private void ResetClickFlag()
+    {
+        isClicking = false;
     }
 
     /// <summary>
