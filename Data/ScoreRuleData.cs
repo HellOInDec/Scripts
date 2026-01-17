@@ -45,15 +45,14 @@ public class RuleCondition
 [System.Serializable]
 public class RoleConfig
 {
-    public string roleType;
+    public string role; // 而非 roleType
     public int count;
 }
 
-// 阵营-角色配置（跨阵营组合）
 [System.Serializable]
 public class CampRoleConfig
 {
     public string camp;
-    public string roleType;
+    public string role; // 而非 roleType
     public int count;
 }
